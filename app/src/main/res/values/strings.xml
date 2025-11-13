@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">WIFI attendance</string>
+    <string-array name="shift_array">
+        <item>Day</item>
+        <item>Night</item>
+    </string-array>
+</resources>
