@@ -12,7 +12,7 @@ public class DataBase extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "wifi_attendance.db";
     private static final int DATABASE_VERSION = 2; // incremented version for new table
 
-    // Table names
+    // Table names//
     private static final String TABLE_WIFI = "wifi";
     private static final String TABLE_WORK = "work";
     private static final String TABLE_WIFI_SCAN = "wifi_scan";
