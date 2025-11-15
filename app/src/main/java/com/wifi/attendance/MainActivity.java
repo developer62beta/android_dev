@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
         checkPermissions();
         updateAttendanceSummary();
         updateAlarmTimeLabels(); // show set times on load
+        new Handler().postDelayed(() -> finish(), 5*1000); // auto close after 5 minuetes
     }
 
     @Override
