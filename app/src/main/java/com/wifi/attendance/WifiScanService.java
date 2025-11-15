@@ -1,5 +1,6 @@
 package com.wifi.attendance;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -7,15 +8,18 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 
 import java.text.SimpleDateFormat;
@@ -34,15 +38,19 @@ public class WifiScanService extends Service {
     private Runnable scanTask;
     private DataBase db;
 
-    // Scan settings
-    private static final int SCAN_INTERVAL_MS = 10 * 1000; // every 10 seconds
-    private static final int MAX_SCAN_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+    // Updated wake lock type (NO DEPRECATION)
+    private PowerManager.WakeLock wakeLock;
+
+    private static final int SCAN_INTERVAL_MS = 10 * 1000;
+    private static final int MAX_SCAN_DURATION_MS = 5 * 60 * 1000;
     private long startTime;
 
     @SuppressLint("ForegroundServiceType")
     @Override
     public void onCreate() {
         super.onCreate();
+
+        acquireWakeLock();
 
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         db = new DataBase(this);
@@ -52,39 +60,67 @@ public class WifiScanService extends Service {
         createNotificationChannel();
         startForeground(1, buildNotification("Wi-Fi Attendance active"));
 
-        scanTask = new Runnable() {
-            @Override
-            public void run() {
-                // ⏱ Stop after 5 minutes
-                if (System.currentTimeMillis() - startTime >= MAX_SCAN_DURATION_MS) {
-                    Log.i(TAG, "⏹️ Stopping scan after 5 minutes");
-                    stopSelf();
-                    return;
-                }
-                wifiScanRecords();
-                new Thread(() -> performWifiScan()).start(); // Run in background thread
-                handler.postDelayed(this, SCAN_INTERVAL_MS);
+        scanTask = () -> {
+
+            if (System.currentTimeMillis() - startTime >= MAX_SCAN_DURATION_MS) {
+                Log.i(TAG, "⛔ Scan timeout (5 min) — Stopping service");
+                stopSelf();
+                return;
             }
+
+            wifiScanRecords();
+            new Thread(this::performWifiScan).start();
+            handler.postDelayed(scanTask, SCAN_INTERVAL_MS);
         };
 
         handler.post(scanTask);
     }
 
+    // -----------------------------
+    //   SAFE WAKE LOCK (No warning)
+    // -----------------------------
+    private void acquireWakeLock() {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+
+        wakeLock = pm.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,          // CPU stays ON
+                "WifiAttendance:PartialWakeLock"
+        );
+
+        try {
+            wakeLock.acquire(10 * 60 * 1000L); // Max 10 minutes
+            Log.i(TAG, "🔐 WakeLock acquired");
+        } catch (Exception e) {
+            Log.e(TAG, "WakeLock error: " + e.getMessage());
+        }
+    }
+
+    // -----------------------------
+    //  MAIN WIFI SCAN FUNCTION
+    // -----------------------------
     private void performWifiScan() {
+
+        // Required permission check (fixes warning)
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "❌ Missing ACCESS_FINE_LOCATION permission");
+            stopSelf();
+            return;
+        }
+
         try {
             String targetWifi = db.getWifi();
             if (targetWifi == null || targetWifi.isEmpty()) {
-                Log.w(TAG, "❌ No Wi-Fi SSID saved in database");
+                Log.w(TAG, "❌ No Wi-Fi saved in DB");
                 stopSelf();
                 return;
             }
 
+            // Turn ON Wi-Fi if needed
             if (!wifiManager.isWifiEnabled()) {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     wifiManager.setWifiEnabled(true);
-                    Log.i(TAG, "📶 Wi-Fi enabled for scanning");
                 } else {
-                    Log.w(TAG, "⚠️ Can't enable Wi-Fi programmatically (Android 10+)");
                     Intent panelIntent = new Intent(Settings.Panel.ACTION_WIFI);
                     panelIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     startActivity(panelIntent);
@@ -94,30 +130,29 @@ public class WifiScanService extends Service {
 
             boolean started = wifiManager.startScan();
             if (!started) {
-                Log.w(TAG, "⚠️ Wi-Fi scan could not start");
+                Log.w(TAG, "⚠️ Scan could not start");
                 return;
             }
 
             List<ScanResult> results = wifiManager.getScanResults();
+
             for (ScanResult result : results) {
-                Log.d(TAG, "🔍 Found: " + result.SSID);
                 if (result.SSID.equalsIgnoreCase(targetWifi)) {
                     markPresent(targetWifi);
-                    return; // stop after marking
+                    return;
                 }
             }
 
-            Log.d(TAG, "📡 Target Wi-Fi not in range");
-
-        } catch (SecurityException se) {
-            Log.e(TAG, "⚠️ Missing permission: " + se.getMessage());
         } catch (Exception e) {
-            Log.e(TAG, "❌ Error during Wi-Fi scan", e);
+            Log.e(TAG, "❌ Scan error: " + e.getMessage());
         }
     }
 
+    // -----------------------------
+    //   MARK PRESENT
+    // -----------------------------
     private void markPresent(String ssid) {
-        Log.i(TAG, "✅ Within range of " + ssid + " — Marked Present!");
+        Log.i(TAG, "✅ Found " + ssid);
 
         try {
             String date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
@@ -126,42 +161,38 @@ public class WifiScanService extends Service {
             String shift = (hour >= 1 && hour < 12) ? "day" : "night";
 
             if (!db.isWorkAlreadyMarked(date, shift)) {
-                long id = db.insertWork(date, shift);
-                if (id != -1)
-                    Log.i(TAG, "🗓️ Attendance saved: " + date + " (" + shift + ")");
-                else
-                    Log.w(TAG, "⚠️ Failed to insert attendance record");
-            } else {
-                Log.i(TAG, "⚠️ Already marked for " + shift + " shift on " + date);
+                db.insertWork(date, shift);
             }
 
+            // Turn off WiFi for older devices
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && wifiManager.isWifiEnabled()) {
                 wifiManager.setWifiEnabled(false);
-                Log.i(TAG, "📴 Wi-Fi turned OFF (Android 9 or below)");
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "❌ Error marking attendance: " + e.getMessage());
+            Log.e(TAG, "⚠️ Error marking: " + e.getMessage());
         }
 
-        stopSelf(); // stop scanning after success
+        stopSelf();
     }
 
-    private void wifiScanRecords(){
-
-        DataBase db = new DataBase(getApplicationContext());
+    // -----------------------------
+    // Save scan record to DB
+    // -----------------------------
+    private void wifiScanRecords() {
         String date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
         String time = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
         db.insertWifiScan(date, time);
-        Log.i(TAG, "✅ Scan Record on DB");
     }
 
+    // -----------------------------
+    // Notification
+    // -----------------------------
     private Notification buildNotification(String msg) {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_notify_sync)
                 .setContentTitle("Wi-Fi Attendance")
                 .setContentText(msg)
-                .setPriority(NotificationCompat.PRIORITY_MIN)
                 .setSilent(true)
                 .build();
     }
@@ -171,20 +202,31 @@ public class WifiScanService extends Service {
             NotificationChannel ch = new NotificationChannel(
                     CHANNEL_ID,
                     "Wi-Fi Attendance Channel",
-                    NotificationManager.IMPORTANCE_MIN);
-            NotificationManager nm = getSystemService(NotificationManager.class);
-            nm.createNotificationChannel(ch);
+                    NotificationManager.IMPORTANCE_MIN
+            );
+            getSystemService(NotificationManager.class).createNotificationChannel(ch);
         }
+    }
+
+    // -----------------------------
+    // ON DESTROY
+    // -----------------------------
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Log.i(TAG, "🔓 WakeLock released");
+        }
+
+        handler.removeCallbacks(scanTask);
+        Log.i(TAG, "🛑 Service stopped");
     }
 
     @Nullable
     @Override
-    public IBinder onBind(Intent intent) { return null; }
-
-    @Override
-    public void onDestroy() {
-        super.onDestroy();
-        handler.removeCallbacks(scanTask);
-        Log.i(TAG, "🛑 WifiScanService destroyed after 5-minute cycle");
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 }

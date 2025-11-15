@@ -3,18 +3,27 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.wifi.attendance">
 
-    <!-- Location & Wi-Fi permissions -->
+    <!-- Wi-Fi scan + location (Required since Android 6–14) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
 
-    <!-- Foreground & boot permissions -->
+    <!-- Run foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Android 10+ foreground type: location -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- WakeLock for keeping screen/CPU active -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Boot complete if you use alarm after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_EXACT_ALARM" tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Android 13+ notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

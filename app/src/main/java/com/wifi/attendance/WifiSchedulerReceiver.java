@@ -14,6 +14,15 @@ public class WifiSchedulerReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         Log.i(TAG, "⏰ Alarm triggered — starting Wi-Fi Scan Service");
+        Log.i(TAG, "⏰ Alarm triggered - starting main activity");
+
+        // ⭐ Launch MainActivity to wake screen
+        Intent openMain = new Intent(context, MainActivity.class);
+        openMain.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK |
+                Intent.FLAG_ACTIVITY_CLEAR_TOP |
+                Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        context.startActivity(openMain);
+        Log.i(TAG, "⏰ Alarm triggered - started main activity");
 
         // ✅ Start Wi-Fi scanning service
         Intent serviceIntent = new Intent(context, WifiScanService.class);
