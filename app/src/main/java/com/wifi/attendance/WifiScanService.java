@@ -49,7 +49,6 @@ public class WifiScanService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-
         acquireWakeLock();
 
         wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);

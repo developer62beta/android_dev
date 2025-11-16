@@ -3,6 +3,7 @@ package com.wifi.attendance;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -13,6 +14,17 @@ public class WifiSchedulerReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
+
+        SharedPreferences p = context.getSharedPreferences("alarm_prefs", Context.MODE_PRIVATE);
+
+        boolean enabled = p.getBoolean("alarm_enabled", true);
+
+        if (!enabled) {
+            Log.i("WifiSchedulerReceiver", "⛔ Attendance disabled — alarm ignored");
+            return;
+        }
+
+
         Log.i(TAG, "⏰ Alarm triggered — starting Wi-Fi Scan Service");
         Log.i(TAG, "⏰ Alarm triggered - starting main activity");
 
@@ -28,17 +40,13 @@ public class WifiSchedulerReceiver extends BroadcastReceiver {
         Intent serviceIntent = new Intent(context, WifiScanService.class);
         ContextCompat.startForegroundService(context, serviceIntent);
 
-        // ✅ Determine which alarm (day/night) fired
-        int requestCode = intent.getIntExtra("requestCode", 1);
 
-        if (requestCode == 1) {
-            // Re-schedule Day alarm for next day
-            AlarmSetup.rescheduleAfterTrigger(context, 8, 0, 1);
-            Log.i(TAG, "🔁 Rescheduled next Day alarm at 8:00 AM");
-        } else {
-            // Re-schedule Night alarm for next day
-            AlarmSetup.rescheduleAfterTrigger(context, 20, 0, 2);
-            Log.i(TAG, "🔁 Rescheduled next Night alarm at 8:00 PM");
-        }
+        // Re-schedule Day alarm for next day
+        AlarmSetup.rescheduleAfterTrigger(context, 8, 0, 1);
+        Log.i(TAG, "🔁 Rescheduled next Day alarm at 8:00 AM");
+
+        // Re-schedule Night alarm for next day
+        AlarmSetup.rescheduleAfterTrigger(context, 20, 0, 2);
+        Log.i(TAG, "🔁 Rescheduled next Night alarm at 8:00 PM");
     }
 }

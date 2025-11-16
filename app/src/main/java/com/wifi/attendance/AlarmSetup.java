@@ -94,4 +94,29 @@ public class AlarmSetup {
             Log.e(TAG, "❌ Error rescheduling alarm: " + e.getMessage());
         }
     }
+
+    // Cancel both alarms
+    public static void cancelAllAlarms(Context context) {
+
+        AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+
+        Intent i1 = new Intent(context, WifiSchedulerReceiver.class);
+        PendingIntent pi1 = PendingIntent.getBroadcast(
+                context, 1, i1,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        am.cancel(pi1);
+
+        Intent i2 = new Intent(context, WifiSchedulerReceiver.class);
+        PendingIntent pi2 = PendingIntent.getBroadcast(
+                context, 2, i2,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        am.cancel(pi2);
+
+        Log.i(TAG, "❌ All alarms cancelled");
+
+    }
+
+
 }
